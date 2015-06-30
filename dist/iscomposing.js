@@ -1,5 +1,5 @@
 /*
- * iscomposing v1.0.0-pre
+ * iscomposing v1.0.0
  * JavaScript implementation of "Indication of Message Composition for Instant Messaging" (RFC 3994)
  * Copyright 2015 Iñaki Baz Castillo at eFace2Face, inc. (https://eface2face.com)
  * License MIT
@@ -102,7 +102,7 @@ Composer.prototype.sent = function () {
 };
 
 
-Composer.prototype.blur = function () {
+Composer.prototype.idle = function () {
 	setStatus.call(this, IDLE);
 };
 
@@ -384,10 +384,10 @@ CompositionIndicator.prototype.sent = function () {
 /**
  * Tell the library that the chat lost focus.
  */
-CompositionIndicator.prototype.blur = function () {
-	debug('blur()');
+CompositionIndicator.prototype.idle = function () {
+	debug('idle()');
 
-	this._composer.blur();
+	this._composer.idle();
 };
 
 
