@@ -82,7 +82,7 @@ myChat.send({
     body: message,
     contentType: 'text/plain'
 });
-indicator.composing('text');
+indicator.sent();
 ```
 
 The app should call this method whenever a message (other than a "status" message) is sent to the remote peer.
