@@ -1,5 +1,5 @@
 /*
- * iscomposing v1.0.0
+ * iscomposing v1.0.1
  * JavaScript implementation of "Indication of Message Composition for Instant Messaging" (RFC 3994)
  * Copyright 2015 Iñaki Baz Castillo at eFace2Face, inc. (https://eface2face.com)
  * License MIT
