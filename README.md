@@ -56,34 +56,39 @@ var indicator = iscomposing({
 ### CompositionIndicator Class API
 
 
-#### `indicator.composing(statusContentType)`
+#### Methods
+
+##### `indicator.composing(statusContentType)`
 
 Tell the library that a message is being composed.
 
  * `statusContentType` (String): Optional string indicating the type of message being composed. Default value is "text".
 
 ```javascript
-// When the user uses the chat text input:
+// When the user types into the chat text input:
 indicator.composing();
 ```
 
-The app should call this method whenever the user writes or deletes into the text input of the chat.
+The app should call this method whenever the user types into the text input of the chat.
 
 
-#### `indicator.sent()`
+##### `indicator.sent()`
 
 Tell the library that the composed message was sent.
 
 ```javascript
 // When the user uses clicks on "Send" button:
-myChat.send(message);
-indicator.composing();
+myChat.send({
+    body: message,
+    contentType: 'text/plain'
+});
+indicator.composing('text');
 ```
 
-The app should call this method whenever a message is sent to the remote peer.
+The app should call this method whenever a message (other than a "status" message) is sent to the remote peer.
 
 
-#### `indicator.blur()`
+##### `indicator.blur()`
 
 Tell the library that the chat lost focus.
 
@@ -95,7 +100,7 @@ indicator.blur();
 The app should call this method whenever the user was writting into the chat text input and clicked elsewhere before sending the ongoing text.
 
 
-#### `indicator.received(msg, mimeContentType)`
+##### `indicator.received(msg, mimeContentType)`
 
 Tell the library that a message has been received. The library will process the given raw message and return `true` if it was a "status" message (so the app is done). Otherwise it returns `false` so the app should continue processing the message as usual (it may be a real chat message or whatever).
 
@@ -114,7 +119,7 @@ myChat.on('message', function (message) {
         return;
     } else {
         // It was not a "status" message, so process it as usual.
-        showReceivedMessage(message.body);
+        showReceivedMessage(message);
     }
 });
 ```
@@ -122,7 +127,7 @@ myChat.on('message', function (message) {
 The app should call this method for each message received from the remote peer.
 
 
-#### `indicator.close()`
+##### `indicator.close()`
 
 Tell the library that the chat is closed. No more events will be fired unless the app reactivates it by calling any API method again.
 
@@ -131,7 +136,72 @@ Tell the library that the chat is closed. No more events will be fired unless th
 indicator.close();
 ```
 
-The app should call this method when, for example, the chat window is closed.
+The app should call this method when, for example, the chat window is closed or the chat itseld ends.
+
+
+#### Events
+
+The `CompositionIndicator` class inherits from the Node [EventEmitter](https://nodejs.org/api/events.html#events_class_events_eventemitter) class.
+
+
+### `indicator.on('local:active', callback(msg, mimeContentType))`
+
+Emitted whenever the app should send an "active status" message to the remote peer. The given `callback` function is called with two arguments:
+
+* `msg` (String): The raw message body to be sent.
+* `mimeContentType` (String): The corresponding value for the MIME *Content-Type* header.
+
+```javascript
+indicator.on('local:active', function (msg, mimeContentType) {
+    myChat.send({
+        body: msg,
+        contentType: mimeContentType
+    });
+});
+```
+
+
+### `indicator.on('local:idle', callback(msg, mimeContentType))`
+
+Emitted whenever the app should send an "idle status" message to the remote peer. The given `callback` function is called with two arguments:
+
+* `msg` (String): The raw message body to be sent.
+* `mimeContentType` (String): The corresponding value for the MIME *Content-Type* header.
+
+```javascript
+indicator.on('local:idle', function (msg, mimeContentType) {
+    myChat.send({
+        body: msg,
+        contentType: mimeContentType
+    });
+});
+```
+
+
+### `indicator.on('remote:active', callback(statusContentType))`
+
+Emitted when the remote peer is composing a message. The given `callback` function is called with a single argument:
+
+* `statusContentType` (String): The type of message being composed ("text", "audio", "video", etc).
+
+```javascript
+indicator.on('remote:active', function (statusContentType) {
+    showRemoteIsComposing(statusContentType);
+});
+```
+
+
+### `indicator.on('remote:idle', callback(statusContentType))`
+
+Emitted when the remote peer is in idle state (rather than composing a new message). The given `callback` function is called with a single argument:
+
+* `statusContentType` (String): The type of message that was previously being composed ("text", "audio", "video", etc).
+
+```javascript
+indicator.on('remote:idle', function (statusContentType) {
+    removeRemoteIsComposing();
+});
+```
 
 
 ### Debugging
