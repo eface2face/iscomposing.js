@@ -88,16 +88,16 @@ indicator.composing('text');
 The app should call this method whenever a message (other than a "status" message) is sent to the remote peer.
 
 
-##### `indicator.blur()`
+##### `indicator.idle()`
 
-Tell the library that the chat lost focus.
+Tell the library that the user is no longer typing or composing a message.
 
 ```javascript
 // When the chat text input looses the focus:
-indicator.blur();
+indicator.idle();
 ```
 
-The app should call this method whenever the user was writting into the chat text input and clicked elsewhere before sending the ongoing text.
+The app should call this method whenever the user was writting into the chat text input and clicked elsewhere before sending the ongoing text, or also when he suddenly deletes all the text previously written in the chat input.
 
 
 ##### `indicator.received(msg, mimeContentType)`
