@@ -144,7 +144,7 @@ The app should call this method when, for example, the chat window is closed or 
 The `CompositionIndicator` class inherits from the Node [EventEmitter](https://nodejs.org/api/events.html#events_class_events_eventemitter) class.
 
 
-### `indicator.on('local:active', callback(msg, mimeContentType))`
+##### `indicator.on('local:active', callback(msg, mimeContentType))`
 
 Emitted whenever the app should send an "active status" message to the remote peer. The given `callback` function is called with two arguments:
 
@@ -161,7 +161,7 @@ indicator.on('local:active', function (msg, mimeContentType) {
 ```
 
 
-### `indicator.on('local:idle', callback(msg, mimeContentType))`
+##### `indicator.on('local:idle', callback(msg, mimeContentType))`
 
 Emitted whenever the app should send an "idle status" message to the remote peer. The given `callback` function is called with two arguments:
 
@@ -178,7 +178,7 @@ indicator.on('local:idle', function (msg, mimeContentType) {
 ```
 
 
-### `indicator.on('remote:active', callback(statusContentType))`
+##### `indicator.on('remote:active', callback(statusContentType))`
 
 Emitted when the remote peer is composing a message. The given `callback` function is called with a single argument:
 
@@ -191,7 +191,7 @@ indicator.on('remote:active', function (statusContentType) {
 ```
 
 
-### `indicator.on('remote:idle', callback(statusContentType))`
+##### `indicator.on('remote:idle', callback(statusContentType))`
 
 Emitted when the remote peer is in idle state (rather than composing a new message). The given `callback` function is called with a single argument:
 
@@ -199,7 +199,7 @@ Emitted when the remote peer is in idle state (rather than composing a new messa
 
 ```javascript
 indicator.on('remote:idle', function (statusContentType) {
-    removeRemoteIsComposing();
+    hideRemoteIsComposing();
 });
 ```
 
