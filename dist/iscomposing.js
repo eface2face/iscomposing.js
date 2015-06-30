@@ -401,7 +401,7 @@ CompositionIndicator.prototype.blur = function () {
 CompositionIndicator.prototype.received = function (msg, mimeContentType) {
 	debug('received() [mimeContentType:"%s"]', mimeContentType);
 
-	this._receiver.received(msg, mimeContentType);
+	return this._receiver.received(msg, mimeContentType);
 };
 
 
@@ -497,6 +497,8 @@ function Receiver(options, activeCb, idleCb) {
 
 Receiver.prototype.received = function (msg, mimeContentType) {
 	if (!msg || !mimeContentType || typeof msg !== 'string' || typeof mimeContentType !== 'string') {
+		debug('received() | no msg or mimeContentType => false');
+
 		return false;
 	}
 
@@ -504,9 +506,13 @@ Receiver.prototype.received = function (msg, mimeContentType) {
 		case FORMAT_XML: {
 			// No a "status" message, so set IDLE state.
 			if (!REGEXP_MIME_CONTENT_TYPE_XML.test(mimeContentType)) {
+				debug('received() | unknown mimeContentType => false');
+
 				setStatus.call(this, IDLE);
 				return false;
 			} else {
+				debug('received() | "status" message => true');
+
 				handleStatusXML.call(this, msg);
 				return true;
 			}
@@ -516,9 +522,13 @@ Receiver.prototype.received = function (msg, mimeContentType) {
 		case FORMAT_JSON: {
 			// No a "status" message, so set IDLE state.
 			if (!REGEXP_MIME_CONTENT_TYPE_JSON.test(mimeContentType)) {
+				debug('received() | unknown mimeContentType => false');
+
 				setStatus.call(this, IDLE);
 				return false;
 			} else {
+				debug('received() | "status" message => true');
+
 				handleStatusJSON.call(this, msg);
 				return true;
 			}
