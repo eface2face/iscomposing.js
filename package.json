@@ -1,6 +1,6 @@
 {
   "name": "iscomposing",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "JavaScript implementation of \"Indication of Message Composition for Instant Messaging\" (RFC 3994)",
   "author": "Iñaki Baz Castillo at eFace2Face, inc. (https://eface2face.com)",
   "license": "MIT",
@@ -27,10 +27,10 @@
     "gulp": "git+https://github.com/gulpjs/gulp.git#4.0",
     "gulp-filelog": "^0.4.1",
     "gulp-header": "^1.2.2",
-    "gulp-jscs": "^1.6.0",
-    "gulp-jscs-stylish": "^1.1.0",
-    "gulp-jshint": "^1.11.1",
-    "jshint-stylish": "~1.0.2",
+    "gulp-jscs": "^2.0.0",
+    "gulp-jscs-stylish": "^1.1.1",
+    "gulp-jshint": "^1.11.2",
+    "jshint-stylish": "~2.0.1",
     "vinyl-source-stream": "^1.1.0"
   },
   "engines": {

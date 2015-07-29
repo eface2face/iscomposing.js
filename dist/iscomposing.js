@@ -1,5 +1,5 @@
 /*
- * iscomposing v1.0.1
+ * iscomposing v2.0.0
  * JavaScript implementation of "Indication of Message Composition for Instant Messaging" (RFC 3994)
  * Copyright 2015 Iñaki Baz Castillo at eFace2Face, inc. (https://eface2face.com)
  * License MIT
@@ -392,16 +392,23 @@ CompositionIndicator.prototype.idle = function () {
 
 
 /**
- * Tell the library that a message has been received.
- * @param  {String} msg             Raw message body.
- * @param  {String} mimeContentType Content-Type of the message.
- * @return {Boolean}                True means that the message is a "status" message to
- *                                  be handled by this library. False otherwise.
+ * Tell the library that a chat message (non a "status" message) has been received.
  */
-CompositionIndicator.prototype.received = function (msg, mimeContentType) {
-	debug('received() [mimeContentType:"%s"]', mimeContentType);
+CompositionIndicator.prototype.received = function () {
+	debug('received()');
 
-	return this._receiver.received(msg, mimeContentType);
+	this._receiver.received();
+};
+
+
+/**
+ * Tell the library to process a received "status" message.
+ * @param  {String} msg             Raw message body.
+ */
+CompositionIndicator.prototype.process = function (msg) {
+	debug('process()');
+
+	this._receiver.process(msg);
 };
 
 
@@ -463,8 +470,6 @@ var
 	DEFAULT_REFRESH_TIMEOUT = 12,
 	MIN_REFRESH_TIMEOUT = 30,
 	DEFAULT_STATUS_CONTENT_TYPE = 'text',
-	REGEXP_MIME_CONTENT_TYPE_XML = /^[ ]*application\/im-iscomposing\+xml/i,
-	REGEXP_MIME_CONTENT_TYPE_JSON = /^[ ]*application\/im-iscomposing\+json/i,
 	REGEXP_XML_STATE = /<([^: ]+:)?state([ ]+[^>]*)?>[\r\n ]*([a-zA-Z0-9]+)[\r\n ]*<\/state>/im,
 	REGEXP_XML_REFRESH = /<([^: ]+:)?refresh([ ]+[^>]*)?>[\r\n ]*([0-9]+)[\r\n ]*<\/refresh>/im,
 	REGEXP_XML_CONTENT_TYPE = /<([^: ]+:)?contenttype([ ]+[^>]*)?>[\r\n ]*(.+)[\r\n ]*<\/contenttype>/im;
@@ -495,50 +500,26 @@ function Receiver(options, activeCb, idleCb) {
 }
 
 
-Receiver.prototype.received = function (msg, mimeContentType) {
-	if (!msg || !mimeContentType || typeof msg !== 'string' || typeof mimeContentType !== 'string') {
-		debug('received() | no msg or mimeContentType => false');
+Receiver.prototype.received = function () {
+	setStatus.call(this, IDLE);
+};
 
+
+Receiver.prototype.process = function (msg) {
+	if (!msg || typeof msg !== 'string') {
 		return false;
 	}
 
 	switch (this._format) {
-		case FORMAT_XML: {
-			// No a "status" message, so set IDLE state.
-			if (!REGEXP_MIME_CONTENT_TYPE_XML.test(mimeContentType)) {
-				debug('received() | unknown mimeContentType => false');
-
-				setStatus.call(this, IDLE);
-				return false;
-			} else {
-				debug('received() | "status" message => true');
-
-				handleStatusXML.call(this, msg);
-				return true;
-			}
+		case FORMAT_XML:
+			handleStatusXML.call(this, msg);
 			break;
-		}
-
 		case FORMAT_JSON: {
-			// No a "status" message, so set IDLE state.
-			if (!REGEXP_MIME_CONTENT_TYPE_JSON.test(mimeContentType)) {
-				debug('received() | unknown mimeContentType => false');
-
-				setStatus.call(this, IDLE);
-				return false;
-			} else {
-				debug('received() | "status" message => true');
-
-				handleStatusJSON.call(this, msg);
-				return true;
-			}
+			handleStatusJSON.call(this, msg);
 			break;
 		}
-
-		// Should not happen.
-		default:
-			return true;
 	}
+
 
 	function handleStatusXML(msg) {
 		var
@@ -563,7 +544,7 @@ Receiver.prototype.received = function (msg, mimeContentType) {
 			contentType = match[3];
 		}
 
-		handleStatus.call(this, {
+		return handleStatus.call(this, {
 			state: state,
 			refresh: refresh,
 			contentType: contentType
@@ -576,19 +557,19 @@ Receiver.prototype.received = function (msg, mimeContentType) {
 		try {
 			object = JSON.parse(msg);
 		} catch (error) {
-			debugerror('receive() | invalid JSON message: %s', error.toString());
-			return;
+			debugerror('process() | invalid JSON message: %s', error.toString());
+			return false;
 		}
 
-		handleStatus.call(this, object);
+		return handleStatus.call(this, object);
 	}
 
 	function handleStatus(data) {
 		// Validate.
 		if (['active', 'idle'].indexOf(data.state.toLowerCase()) === -1) {
-			debugerror('receive() | "state" must be "active" or "idle", ignoring status message');
+			debugerror('process() | "state" must be "active" or "idle", ignoring status message');
 
-			return;
+			return false;
 		}
 
 		if (data.contentType && typeof data.contentType === 'string') {
@@ -621,6 +602,8 @@ Receiver.prototype.received = function (msg, mimeContentType) {
 				setStatus.call(this, IDLE);
 				break;
 		}
+
+		return true;
 	}
 };
 

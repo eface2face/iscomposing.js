@@ -79,8 +79,8 @@ Tell the library that the composed message was sent.
 ```javascript
 // When the user uses clicks on "Send" button:
 myChat.send({
-    body: message,
-    contentType: 'text/plain'
+    contentType: 'text/plain',
+    body: text
 });
 indicator.sent();
 ```
@@ -100,31 +100,38 @@ indicator.idle();
 The app should call this method whenever the user was writting into the chat text input and clicked elsewhere before sending the ongoing text, or also when he suddenly deletes all the text previously written in the chat input.
 
 
-##### `indicator.received(msg, mimeContentType)`
+##### `indicator.received()`
 
-Tell the library that a message has been received. The library will process the given raw message and return `true` if it was a "status" message (so the app is done). Otherwise it returns `false` so the app should continue processing the message as usual (it may be a real chat message or whatever).
-
- * `msg` (String): The received raw message.
- * `mimeContentType` (String): The MIME Content-Type of the received message (typically indicated in a *Content-Type* header.
-
-For the library to handle the message, the value of the `mimeContentType` argument must be "application/im-iscomposing+xml" (if `format` is "xml) or "application/im-iscomposing+json" (if `format` is "json").
-
-Returns `true` (the app should end message processing) or `false` (the app should handle the received message by its own).
+Tell the library that a message (other than a "status" message) has been received.
 
 ```javascript
-// When a message (msg) is received from the remote peer.
+// When a chat message (msg) is received from the remote peer.
 myChat.on('message', function (message) {
-    if (indicator.received(message.body, message.contentType)) {
-        // It was a "status" message already, so stop here.
-        return;
-    } else {
-        // It was not a "status" message, so process it as usual.
-        showReceivedMessage(message);
+    if (message.contentType === 'text/plain') {
+        indicator.received();
     }
 });
 ```
 
-The app should call this method for each message received from the remote peer.
+The app should call this method for each chat/audio/video message received from the remote peer (other than "status" message).
+
+
+##### `indicator.process(msg)`
+
+Tell the library that a "status" message has been received. The library will process the given raw message.
+
+ * `msg` (String): The received raw message.
+ 
+```javascript
+// When a message (msg) is received from the remote peer.
+myChat.on('message', function (message) {
+    if (message.contentType === 'application/im-iscomposing+xml') {
+        indicator.process(message.body);
+    }
+});
+```
+
+The app should call this method for each "status" message received from the remote peer.
 
 
 ##### `indicator.close()`
