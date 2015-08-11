@@ -360,7 +360,6 @@ var
 	 */
 	debug = require('debug')('iscomposing:Receiver'),
 	debugerror = require('debug')('iscomposing:ERROR:Receiver'),
-	mimemessage = require('mimemessage'),
 	EventEmitter = require('events').EventEmitter,
 
 	/**
@@ -436,7 +435,8 @@ Receiver.prototype.received = function () {
 Receiver.prototype.process = function (msg) {
 	debug('process()');
 
-	if (msg instanceof mimemessage.Entity) {
+	// msg is a mimemessage.Entity.
+	if (msg && msg.body) {
 		msg = msg.body;
 	}
 
@@ -638,7 +638,7 @@ function emit() {
 }
 
 
-},{"debug":5,"events":4,"mimemessage":11}],3:[function(require,module,exports){
+},{"debug":5,"events":4}],3:[function(require,module,exports){
 module.exports = {
 	Composer: require('./Composer'),
 	Receiver: require('./Receiver')
