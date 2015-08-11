@@ -1,5 +1,5 @@
 /*
- * iscomposing v2.0.0
+ * iscomposing v3.0.0
  * JavaScript implementation of "Indication of Message Composition for Instant Messaging" (RFC 3994)
  * Copyright 2015 Iñaki Baz Castillo at eFace2Face, inc. (https://eface2face.com)
  * License MIT
@@ -17,6 +17,9 @@ var
 	 * Dependencies.
 	 */
 	debug = require('debug')('iscomposing:Composer'),
+	debugerror = require('debug')('iscomposing:ERROR:Composer'),
+	mimemessage = require('mimemessage'),
+	EventEmitter = require('events').EventEmitter,
 
 	/**
 	 * Constants.
@@ -33,8 +36,24 @@ var
 	MIME_CONTENT_TYPE_XML = 'application/im-iscomposing+xml',
 	MIME_CONTENT_TYPE_JSON = 'application/im-iscomposing+json';
 
+debugerror.log = console.warn.bind(console);
 
-function Composer(options, activeCb, idleCb) {
+
+function Composer(options) {
+	if (!(this instanceof Composer)) {
+		return new Composer(options);
+	}
+
+	// Inherit from EventEmitter.
+	EventEmitter.call(this);
+
+	options = options || {};
+
+	// Validate some options.
+	if (options.format && ['xml', 'json'].indexOf(options.format) === -1) {
+		throw new Error('options.format must be "xml" or "json"');
+	}
+
 	// Timer values.
 	switch (options.refreshInterval) {
 		case undefined:
@@ -68,11 +87,7 @@ function Composer(options, activeCb, idleCb) {
 	this._format = (options.format === 'json') ? FORMAT_JSON : FORMAT_XML;
 
 	debug('new() | processed options [format:%s, refreshInterval:%s, idleTimeout:%s]',
-		this._format, this._refreshInterval, this._idleTimeout);
-
-	// Callbacks.
-	this._activeCb = activeCb;
-	this._idleCb = idleCb;
+		(this._format === FORMAT_XML ? 'xml' : 'json'), this._refreshInterval, this._idleTimeout);
 
 	// Status.
 	this._status = IDLE;
@@ -86,7 +101,20 @@ function Composer(options, activeCb, idleCb) {
 }
 
 
+// Inherit from EventEmitter.
+Composer.prototype = Object.create(EventEmitter.prototype, {
+	constructor: {
+		value: Composer,
+		enumerable: false,
+		writable: true,
+		configurable: true
+	}
+});
+
+
 Composer.prototype.composing = function (statusContentType) {
+	debug('composing() [statusContentType:"%s"]', statusContentType);
+
 	if (statusContentType && typeof statusContentType === 'string') {
 		this._statusContentType = statusContentType.toLowerCase().trim();
 	} else {
@@ -98,16 +126,22 @@ Composer.prototype.composing = function (statusContentType) {
 
 
 Composer.prototype.sent = function () {
+	debug('sent()');
+
 	setStatus.call(this, IDLE, true);
 };
 
 
 Composer.prototype.idle = function () {
+	debug('idle()');
+
 	setStatus.call(this, IDLE);
 };
 
 
 Composer.prototype.close = function () {
+	debug('close()');
+
 	setStatus.call(this, IDLE, true);
 };
 
@@ -211,10 +245,16 @@ function stopIdleTimer() {
 function callActiveCb() {
 	switch (this._format) {
 		case FORMAT_XML:
-			this._activeCb(createActiveXML.call(this), MIME_CONTENT_TYPE_XML);
+			emit.call(this, 'active', mimemessage.factory({
+				contentType: MIME_CONTENT_TYPE_XML,
+				body: createActiveXML.call(this)
+			}));
 			break;
 		case FORMAT_JSON:
-			this._activeCb(createActiveJSON.call(this), MIME_CONTENT_TYPE_JSON);
+			emit.call(this, 'active', mimemessage.factory({
+				contentType: MIME_CONTENT_TYPE_JSON,
+				body: createActiveJSON.call(this)
+			}));
 			break;
 	}
 }
@@ -223,10 +263,16 @@ function callActiveCb() {
 function callIdleCb() {
 	switch (this._format) {
 		case FORMAT_XML:
-			this._idleCb(createIdleXML.call(this), MIME_CONTENT_TYPE_XML);
+			emit.call(this, 'idle', mimemessage.factory({
+				contentType: MIME_CONTENT_TYPE_XML,
+				body: createIdleXML.call(this)
+			}));
 			break;
 		case FORMAT_JSON:
-			this._idleCb(createIdleJSON.call(this), MIME_CONTENT_TYPE_JSON);
+			emit.call(this, 'idle', mimemessage.factory({
+				contentType: MIME_CONTENT_TYPE_JSON,
+				body: createIdleJSON.call(this)
+			}));
 			break;
 	}
 }
@@ -243,7 +289,7 @@ function createActiveXML() {
 		'  <refresh>' + this._refreshInterval + '</refresh>\n';
 	}
 	xml +=
-		'</isComposing>\n';
+		'</isComposing>';
 
 	return xml;
 }
@@ -255,7 +301,7 @@ function createIdleXML() {
 		'<isComposing xmlns="urn:ietf:params:xml:ns:im-iscomposing">\n' +
 		'  <state>idle</state>\n' +
 		'  <contenttype>' + this._statusContentType + '</contenttype>\n' +
-		'</isComposing>\n';
+		'</isComposing>';
 
 	return xml;
 }
@@ -284,151 +330,6 @@ function createIdleJSON() {
 	return JSON.stringify(object, null, '\t');
 }
 
-},{"debug":6}],2:[function(require,module,exports){
-/**
- * Expose the CompositionIndicator class.
- */
-module.exports = CompositionIndicator;
-
-
-var
-	/**
-	 * Dependencies.
-	 */
-	debug = require('debug')('iscomposing:CompositionIndicator'),
-	debugerror = require('debug')('iscomposing:ERROR:CompositionIndicator'),
-	EventEmitter = require('events').EventEmitter,
-	Composer = require('./Composer'),
-	Receiver = require('./Receiver');
-
-debugerror.log = console.warn.bind(console);
-
-
-function CompositionIndicator(options) {
-	debug('new() | [options:%o]', options);
-
-	var self = this;
-
-	// Inherit from EventEmitter.
-	EventEmitter.call(this);
-
-	options = options || {};
-
-	// Validate some options.
-	if (options.format && ['xml', 'json'].indexOf(options.format) === -1) {
-		throw new Error('options.format must be "xml" or "json"');
-	}
-
-	// Composer instance.
-	this._composer = new Composer(
-		// options
-		options,
-		// activeCb
-		function (msg, mimeContentType) {
-			emit.call(self, 'local:active', msg, mimeContentType);
-		},
-		// idleCb
-		function (msg, mimeContentType) {
-			emit.call(self, 'local:idle', msg, mimeContentType);
-		}
-	);
-
-	// Receiver instance.
-	this._receiver = new Receiver(
-		// options
-		options,
-		// activeCb
-		function (statusContentType) {
-			emit.call(self, 'remote:active', statusContentType);
-		},
-		// idleCb
-		function (statusContentType) {
-			emit.call(self, 'remote:idle', statusContentType);
-		}
-	);
-}
-
-
-// Inherit from EventEmitter.
-CompositionIndicator.prototype = Object.create(EventEmitter.prototype, {
-	constructor: {
-		value: CompositionIndicator,
-		enumerable: false,
-		writable: true,
-		configurable: true
-	}
-});
-
-
-/**
- * Tell the library that a message is being composed.
- * @param  {String} statusContentType  "text", "video", "audio", etc.
- */
-CompositionIndicator.prototype.composing = function (statusContentType) {
-	debug('composing() [statusContentType:"%s"]', statusContentType);
-
-	this._composer.composing(statusContentType);
-};
-
-
-/**
- * Tell the library that the composed message was sent.
- */
-CompositionIndicator.prototype.sent = function () {
-	debug('sent()');
-
-	this._composer.sent();
-};
-
-
-/**
- * Tell the library that the chat lost focus.
- */
-CompositionIndicator.prototype.idle = function () {
-	debug('idle()');
-
-	this._composer.idle();
-};
-
-
-/**
- * Tell the library that a chat message (non a "status" message) has been received.
- */
-CompositionIndicator.prototype.received = function () {
-	debug('received()');
-
-	this._receiver.received();
-};
-
-
-/**
- * Tell the library to process a received "status" message.
- * @param  {String} msg             Raw message body.
- */
-CompositionIndicator.prototype.process = function (msg) {
-	debug('process()');
-
-	this._receiver.process(msg);
-};
-
-
-/**
- * Tell the library that the chat is closed.
- * No more events will be fired unless the app reactivates it by calling
- * API methods again.
- */
-CompositionIndicator.prototype.close = function () {
-	debug('close()');
-
-	this._composer.close();
-	this._receiver.close();
-};
-
-
-/**
- * Private API.
- */
-
 
 function emit() {
 	if (arguments.length === 1) {
@@ -445,7 +346,8 @@ function emit() {
 	}
 }
 
-},{"./Composer":1,"./Receiver":3,"debug":6,"events":5}],3:[function(require,module,exports){
+
+},{"debug":5,"events":4,"mimemessage":11}],2:[function(require,module,exports){
 /**
  * Expose the Receiver class.
  */
@@ -458,6 +360,8 @@ var
 	 */
 	debug = require('debug')('iscomposing:Receiver'),
 	debugerror = require('debug')('iscomposing:ERROR:Receiver'),
+	mimemessage = require('mimemessage'),
+	EventEmitter = require('events').EventEmitter,
 
 	/**
 	 * Constants.
@@ -477,14 +381,25 @@ var
 debugerror.log = console.warn.bind(console);
 
 
-function Receiver(options, activeCb, idleCb) {
+function Receiver(options) {
+	if (!(this instanceof Receiver)) {
+		return new Receiver(options);
+	}
+
+	// Inherit from EventEmitter.
+	EventEmitter.call(this);
+
+	options = options || {};
+
+	// Validate some options.
+	if (options.format && ['xml', 'json'].indexOf(options.format) === -1) {
+		throw new Error('options.format must be "xml" or "json"');
+	}
+
 	this._format = (options.format === 'json') ? FORMAT_JSON : FORMAT_XML;
 
-	debug('new() | processed options [format:%s]', this._format);
-
-	// Callbacks.
-	this._activeCb = activeCb;
-	this._idleCb = idleCb;
+	debug('new() | processed options [format:%s]',
+		(this._format === FORMAT_XML ? 'xml' : 'json'));
 
 	// Status.
 	this._status = IDLE;
@@ -500,13 +415,33 @@ function Receiver(options, activeCb, idleCb) {
 }
 
 
+// Inherit from EventEmitter.
+Receiver.prototype = Object.create(EventEmitter.prototype, {
+	constructor: {
+		value: Receiver,
+		enumerable: false,
+		writable: true,
+		configurable: true
+	}
+});
+
+
 Receiver.prototype.received = function () {
+	debug('received()');
+
 	setStatus.call(this, IDLE);
 };
 
 
 Receiver.prototype.process = function (msg) {
+	debug('process()');
+
+	if (msg instanceof mimemessage.Entity) {
+		msg = msg.body;
+	}
+
 	if (!msg || typeof msg !== 'string') {
+		debugerror('process() | wrong status message: %s', msg);
 		return false;
 	}
 
@@ -519,7 +454,6 @@ Receiver.prototype.process = function (msg) {
 			break;
 		}
 	}
-
 
 	function handleStatusXML(msg) {
 		var
@@ -609,6 +543,8 @@ Receiver.prototype.process = function (msg) {
 
 
 Receiver.prototype.close = function () {
+	debug('close()');
+
 	setStatus.call(this, IDLE);
 };
 
@@ -631,7 +567,7 @@ function setStatus(newStatus, doNotNotifyIdle) {
 					debug('setStatus() | from IDLE to ACTIVE');
 
 					runActiveTimer.call(this);
-					callActiveCb.call(this);
+					emit.call(this, 'active', this._statusContentType);
 					break;
 				}
 
@@ -652,7 +588,7 @@ function setStatus(newStatus, doNotNotifyIdle) {
 
 					stopActiveTimer.call(this);
 					if (!doNotNotifyIdle) {
-						callIdleCb.call(this);
+						emit.call(this, 'idle', this._statusContentType);
 					}
 					break;
 				}
@@ -686,32 +622,30 @@ function stopActiveTimer() {
 }
 
 
-function callActiveCb() {
-	this._activeCb(this._statusContentType);
+function emit() {
+	if (arguments.length === 1) {
+		debug('emit "%s"', arguments[0]);
+	} else {
+		debug('emit "%s" [arg:%o]', arguments[0], arguments[1]);
+	}
+
+	try {
+		this.emit.apply(this, arguments);
+	}
+	catch (error) {
+		debugerror('emit() | error running an event handler for "%s" event: %o', arguments[0], error);
+	}
 }
 
 
-function callIdleCb() {
-	this._idleCb(this._statusContentType);
-}
-
-},{"debug":6}],4:[function(require,module,exports){
-var
-	/**
-	 * Dependencies.
-	 */
-	CompositionIndicator = require('./CompositionIndicator');
-
-
-/**
- * Expose a function that returns an instance of CompositionIndicator.
- */
-module.exports = function (data) {
-	return new CompositionIndicator(data);
+},{"debug":5,"events":4,"mimemessage":11}],3:[function(require,module,exports){
+module.exports = {
+	Composer: require('./Composer'),
+	Receiver: require('./Receiver')
 };
 
 
-},{"./CompositionIndicator":2}],5:[function(require,module,exports){
+},{"./Composer":1,"./Receiver":2}],4:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -1014,7 +948,7 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],6:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 
 /**
  * This is the web browser implementation of `debug()`.
@@ -1184,7 +1118,7 @@ function localstorage(){
   } catch (e) {}
 }
 
-},{"./debug":7}],7:[function(require,module,exports){
+},{"./debug":6}],6:[function(require,module,exports){
 
 /**
  * This is the common logic for both the Node.js and web browser
@@ -1383,7 +1317,7 @@ function coerce(val) {
   return val;
 }
 
-},{"ms":8}],8:[function(require,module,exports){
+},{"ms":7}],7:[function(require,module,exports){
 /**
  * Helpers.
  */
@@ -1510,5 +1444,619 @@ function plural(ms, n, name) {
   return Math.ceil(ms / n) + ' ' + name + 's';
 }
 
-},{}]},{},[4])(4)
+},{}],8:[function(require,module,exports){
+/**
+ * Expose the Entity class.
+ */
+module.exports = Entity;
+
+var
+	/**
+	 * Dependencies.
+	 */
+	debug = require('debug')('mimemessage:Entity'),
+	debugerror = require('debug')('mimemessage:ERROR:Entity'),
+	randomString = require('random-string'),
+	grammar = require('./grammar'),
+	parseHeaderValue = require('./parse').parseHeaderValue;
+
+debugerror.log = console.warn.bind(console);
+
+
+function Entity() {
+	debug('new()');
+
+	this._headers = {};
+	this._body = null;
+}
+
+
+Entity.prototype.contentType = function (value) {
+	// Get.
+	if (!value && value !== null) {
+		return this._headers['Content-Type'];
+	// Set.
+	} else if (value) {
+		this._headers['Content-Type'] =
+			parseHeaderValue(grammar.headerRules['Content-Type'], value);
+	// Delete.
+	} else {
+		delete this._headers['Content-Type'];
+	}
+};
+
+
+Entity.prototype.contentTransferEncoding = function (value) {
+	var contentTransferEncoding = this._headers['Content-Transfer-Encoding'];
+
+	// Get.
+	if (!value && value !== null) {
+		return contentTransferEncoding ? contentTransferEncoding.value : undefined;
+	// Set.
+	} else if (value) {
+		this._headers['Content-Transfer-Encoding'] =
+			parseHeaderValue(grammar.headerRules['Content-Transfer-Encoding'], value);
+	// Delete.
+	} else {
+		delete this._headers['Content-Transfer-Encoding'];
+	}
+};
+
+
+Entity.prototype.header = function (name, value) {
+	name = grammar.headerize(name);
+
+	// Get.
+	if (!value && value !== null) {
+		if (this._headers[name]) {
+			return this._headers[name].value;
+		}
+	// Set.
+	} else if (value) {
+		this._headers[name] = {
+			value: value
+		};
+	// Delete.
+	} else {
+		delete this._headers[name];
+	}
+};
+
+
+Object.defineProperty(Entity.prototype, 'body', {
+	get: function () {
+		return this._body;
+	},
+	set: function (body) {
+		if (body) {
+			setBody.call(this, body);
+		} else {
+			delete this._body;
+		}
+	}
+});
+
+
+Entity.prototype.isMultiPart = function () {
+	var contentType = this._headers['Content-Type'];
+
+	if (contentType && contentType.type === 'multipart') {
+		return true;
+	} else {
+		return false;
+	}
+};
+
+
+Entity.prototype.toString = function () {
+	var
+		raw = '',
+		name, header,
+		i, len,
+		contentType = this._headers['Content-Type'],
+		boundary;
+
+	// MIME headers.
+	for (name in this._headers) {
+		if (this._headers.hasOwnProperty(name)) {
+			header = this._headers[name];
+
+			raw += name + ': ' + header.value + '\r\n';
+		}
+	}
+
+	// Body.
+	if (Array.isArray(this._body)) {
+		boundary = contentType.params.boundary;
+
+		for (i = 0, len = this._body.length; i < len; i++) {
+			raw += '\r\n--' + boundary + '\r\n' + this._body[i].toString();
+		}
+		raw += '\r\n--' + boundary + '--';
+	} else if (this._body) {
+		raw += '\r\n' + this._body.toString();
+	} else {
+		raw += '\r\n';
+	}
+
+	return raw;
+};
+
+
+/**
+ * Private API.
+ */
+
+
+function setBody(body) {
+	var contentType = this._headers['Content-Type'];
+
+	this._body = body;
+
+	// Multipart body.
+	if (Array.isArray(body)) {
+		if (!contentType || contentType.type !== 'multipart') {
+			this.contentType('multipart/mixed;boundary=' + randomString());
+		} else if (!contentType.params.boundary) {
+			this.contentType(contentType.fulltype + ';boundary=' + randomString());
+		}
+	// Single body.
+	} else {
+		if (!contentType || contentType.type === 'multipart') {
+			this.contentType('text/plain;charset=utf-8');
+		}
+	}
+}
+
+},{"./grammar":10,"./parse":12,"debug":5,"random-string":13}],9:[function(require,module,exports){
+/**
+ * Expose the factory function.
+ */
+module.exports = factory;
+
+var
+	/**
+	 * Dependencies.
+	 */
+	debug = require('debug')('mimemessage:factory'),
+	debugerror = require('debug')('mimemessage:ERROR:factory'),
+	Entity = require('./Entity');
+
+debugerror.log = console.warn.bind(console);
+
+
+function factory(data) {
+	debug('factory() | [data:%o]', data);
+
+	var entity = new Entity();
+
+	data = data || {};
+
+	// Add Content-Type.
+	if (data.contentType) {
+		entity.contentType(data.contentType);
+	}
+
+	// Add Content-Transfer-Encoding.
+	if (data.contentTransferEncoding) {
+		entity.contentTransferEncoding(data.contentTransferEncoding);
+	}
+
+	// Add body.
+	if (data.body) {
+		entity.body = data.body;
+	}
+
+	return entity;
+}
+
+},{"./Entity":8,"debug":5}],10:[function(require,module,exports){
+var
+	/**
+	 * Exported object.
+	 */
+	grammar = module.exports = {},
+
+	/**
+	 * Constants.
+	 */
+	REGEXP_CONTENT_TYPE = /^([^\t \/]+)\/([^\t ;]+)(.*)$/,
+	REGEXP_CONTENT_TRANSFER_ENCODING = /^([a-zA-Z0-9\-_]+)$/,
+	REGEXP_PARAM = /^[ \t]*([^\t =]+)[ \t]*=[ \t]*([^"\t =]+|"([^"]*)")[ \t]*$/;
+
+
+grammar.headerRules = {
+	'Content-Type': {
+		reg: function (value) {
+			var
+				match = value.match(REGEXP_CONTENT_TYPE),
+				params = {};
+
+			if (!match) {
+				return undefined;
+			}
+
+			if (match[3]) {
+				params = parseParams(match[3]);
+				if (!params) {
+					return undefined;
+				}
+			}
+
+			return {
+				fulltype: match[1].toLowerCase() + '/' + match[2].toLowerCase(),
+				type: match[1].toLowerCase(),
+				subtype: match[2].toLowerCase(),
+				params: params
+			};
+		}
+	},
+
+	'Content-Transfer-Encoding': {
+		reg: function (value) {
+			var match = value.match(REGEXP_CONTENT_TRANSFER_ENCODING);
+
+			if (!match) {
+				return undefined;
+			}
+
+			return {
+				value: match[1].toLowerCase()
+			};
+		}
+	}
+};
+
+
+grammar.unknownHeaderRule = {
+	reg: /(.*)/,
+	names: ['value']
+};
+
+
+grammar.headerize = function (string) {
+	var
+		exceptions = {
+			'Mime-Version': 'MIME-Version',
+			'Content-Id': 'Content-ID'
+		},
+		name = string.toLowerCase().replace(/_/g, '-').split('-'),
+		hname = '',
+		parts = name.length,
+		part;
+
+	for (part = 0; part < parts; part++) {
+		if (part !== 0) {
+			hname += '-';
+		}
+		hname += name[part].charAt(0).toUpperCase() + name[part].substring(1);
+	}
+
+	if (exceptions[hname]) {
+		hname = exceptions[hname];
+	}
+
+	return hname;
+};
+
+
+// Set sensible defaults to avoid polluting the grammar with boring details.
+
+Object.keys(grammar.headerRules).forEach(function (name) {
+	var rule = grammar.headerRules[name];
+
+	if (!rule.reg) {
+		rule.reg = /(.*)/;
+	}
+});
+
+
+/**
+ * Private API.
+ */
+
+
+function parseParams(rawParams) {
+	var
+		splittedParams,
+		i, len,
+		paramMatch,
+		params = {};
+
+	if (rawParams === '' || rawParams === undefined || rawParams === null) {
+		return params;
+	}
+
+	splittedParams = rawParams.split(';');
+	if (splittedParams.length === 0) {
+		return undefined;
+	}
+
+	for (i = 1, len = splittedParams.length; i < len; i++) {
+		paramMatch = splittedParams[i].match(REGEXP_PARAM);
+		if (!paramMatch) {
+			return undefined;
+		}
+
+		params[paramMatch[1].toLowerCase()] = paramMatch[3] || paramMatch[2];
+	}
+
+	return params;
+}
+
+},{}],11:[function(require,module,exports){
+module.exports = {
+	factory: require('./factory'),
+	parse: require('./parse'),
+	Entity: require('./Entity')
+};
+
+
+},{"./Entity":8,"./factory":9,"./parse":12}],12:[function(require,module,exports){
+/**
+ * Expose the parse function and some util funtions within it.
+ */
+module.exports = parse;
+parse.parseHeaderValue = parseHeaderValue;
+
+var
+	/**
+	 * Dependencies.
+	 */
+	debug = require('debug')('mimemessage:parse'),
+	debugerror = require('debug')('mimemessage:ERROR:parse'),
+	grammar = require('./grammar'),
+	Entity = require('./Entity'),
+
+	/**
+ 	 * Constants.
+ 	 */
+	REGEXP_VALID_MIME_HEADER = /^([a-zA-Z0-9!#$%&'+,\-\^_`|~]+)[ \t]*:[ \t]*(.+)$/;
+
+debugerror.log = console.warn.bind(console);
+
+
+function parse(rawMessage) {
+	debug('parse()');
+
+	var entity = new Entity();
+
+	if (typeof rawMessage !== 'string') {
+		throw new TypeError('given data must be a string');
+	}
+
+	if (!parseEntity(entity, rawMessage, true)) {
+		debugerror('invalid MIME message');
+		return false;
+	}
+
+	return entity;
+}
+
+
+function parseEntity(entity, rawEntity, topLevel) {
+	debug('parseEntity()');
+
+	var
+		headersEnd,
+		rawHeaders,
+		rawBody,
+		contentType, boundary,
+		boundaryRegExp, boundaryEndRegExp, match, partStart,
+		parts = [],
+		i, len,
+		subEntity;
+
+	headersEnd = rawEntity.indexOf('\r\n\r\n');
+
+	if (headersEnd !== -1) {
+		rawHeaders = rawEntity.slice(0, headersEnd);
+		rawBody = rawEntity.slice(headersEnd + 4);
+	} else if (topLevel) {
+		debugerror('parseEntity() | wrong MIME headers in top level entity');
+		return false;
+	} else {
+		if (/^\r\n/.test(rawEntity)) {
+			rawBody = rawEntity.slice(2);
+		} else {
+			debugerror('parseEntity() | wrong sub-entity');
+			return false;
+		}
+	}
+
+	if (rawHeaders && !parseEntityHeaders(entity, rawHeaders)) {
+		return false;
+	}
+
+	contentType = entity.contentType();
+
+	// Multipart body.
+	if (contentType && contentType.type === 'multipart') {
+		boundary = contentType.params.boundary;
+		if (!boundary) {
+			debugerror('parseEntity() | "multipart" Content-Type must have "boundary" parameter');
+			return false;
+		}
+
+		// Build the complete boundary regexps.
+		boundaryRegExp = new RegExp('(\\r\\n)?--' + boundary + '[\\t ]*\\r\\n', 'g');
+		boundaryEndRegExp = new RegExp('\\r\\n--' + boundary + '--[\\t ]*');
+
+		while (true) {
+			match = boundaryRegExp.exec(rawBody);
+
+			if (match) {
+				if (partStart !== undefined) {
+					parts.push(rawBody.slice(partStart, match.index));
+				}
+
+				partStart = boundaryRegExp.lastIndex;
+			} else {
+				if (partStart === undefined) {
+					debugerror('parseEntity() | no bodies found in a "multipart" sub-entity');
+					return false;
+				}
+
+				boundaryEndRegExp.lastIndex = partStart;
+				match = boundaryEndRegExp.exec(rawBody);
+
+				if (!match) {
+					debugerror('parseEntity() | no ending boundary in a "multipart" sub-entity');
+					return false;
+				}
+
+				parts.push(rawBody.slice(partStart, match.index));
+				break;
+			}
+		}
+
+		entity._body = [];
+
+		for (i = 0, len = parts.length; i < len; i++) {
+			subEntity = new Entity();
+			entity._body.push(subEntity);
+
+			if (!parseEntity(subEntity, parts[i])) {
+				debugerror('invalid MIME sub-entity');
+				return false;
+			}
+		}
+	// Non multipart body.
+	} else {
+		entity._body = rawBody;
+	}
+
+	return true;
+}
+
+
+function parseEntityHeaders(entity, rawHeaders) {
+	var
+		lines = rawHeaders.split('\r\n'),
+		line,
+		i, len;
+
+	for (i = 0, len = lines.length; i < len; i++) {
+		line = lines[i];
+
+		while (/^[ \t]/.test(lines[i + 1])) {
+			line = line + ' ' + lines[i + 1].trim();
+			i++;
+		}
+
+		if (!parseHeader(entity, line)) {
+			debugerror('parseEntityHeaders() | invalid MIME header: "%s"', line);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+
+function parseHeader(entity, rawHeader) {
+	var
+		match = rawHeader.match(REGEXP_VALID_MIME_HEADER),
+		name, value, rule, data;
+
+	if (!match) {
+		debugerror('invalid MIME header "%s"', rawHeader);
+		return false;
+	}
+
+	name = grammar.headerize(match[1]);
+	value = match[2];
+
+	rule = grammar.headerRules[name] || grammar.unknownHeaderRule;
+
+	try {
+		data = parseHeaderValue(rule, value);
+	}	catch (error) {
+		debugerror('wrong MIME header: "%s"', rawHeader);
+		return false;
+	}
+
+	entity._headers[name] = data;
+	return true;
+}
+
+
+function parseHeaderValue(rule, value) {
+	var
+		parsedValue,
+		i, len,
+		data = {};
+
+	if (typeof rule.reg !== 'function') {
+		parsedValue = value.match(rule.reg);
+		if (!parsedValue) {
+			throw new Error('parseHeaderValue() failed for ' + value);
+		}
+
+		for (i = 0, len = rule.names.length; i < len; i++) {
+			if (parsedValue[i + 1] !== undefined) {
+				data[rule.names[i]] = parsedValue[i + 1];
+			}
+		}
+	} else {
+		data = rule.reg(value);
+		if (!data) {
+			throw new Error('parseHeaderValue() failed for ' + value);
+		}
+	}
+
+	if (!data.value) {
+		data.value = value;
+	}
+
+	return data;
+}
+
+},{"./Entity":8,"./grammar":10,"debug":5}],13:[function(require,module,exports){
+/*
+ * random-string
+ * https://github.com/valiton/node-random-string
+ *
+ * Copyright (c) 2013 Valiton GmbH, Bastian 'hereandnow' Behrens
+ * Licensed under the MIT license.
+ */
+
+'use strict';
+
+var numbers = '0123456789',
+    letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+    specials = '!$%^&*()_+|~-=`{}[]:;<>?,./';
+
+
+function _defaults (opts) {
+  opts || (opts = {});
+  return {
+    length: opts.length || 8,
+    numeric: typeof opts.numeric === 'boolean' ? opts.numeric : true,
+    letters: typeof opts.letters === 'boolean' ? opts.letters : true,
+    special: typeof opts.special === 'boolean' ? opts.special : false
+  };
+}
+
+function _buildChars (opts) {
+  var chars = '';
+  if (opts.numeric) { chars += numbers; }
+  if (opts.letters) { chars += letters; }
+  if (opts.special) { chars += specials; }
+  return chars;
+}
+
+module.exports = function randomString(opts) {
+  opts = _defaults(opts);
+  var i, rn,
+      rnd = '',
+      len = opts.length,
+      randomChars = _buildChars(opts);
+  for (i = 1; i <= len; i++) {
+    rnd += randomChars.substring(rn = Math.floor(Math.random() * randomChars.length), rn + 1);
+  }
+  return rnd;
+};
+
+},{}]},{},[3])(3)
 });
