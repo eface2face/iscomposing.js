@@ -1,7 +1,7 @@
 /*
- * iscomposing v3.0.0
+ * iscomposing v3.0.2
  * JavaScript implementation of "Indication of Message Composition for Instant Messaging" (RFC 3994)
- * Copyright 2015 Iñaki Baz Castillo at eFace2Face, inc. (https://eface2face.com)
+ * Copyright 2015-2016 Iñaki Baz Castillo at eFace2Face, inc. (https://eface2face.com)
  * License MIT
  */
 
@@ -1548,7 +1548,7 @@ Entity.prototype.isMultiPart = function () {
 };
 
 
-Entity.prototype.toString = function () {
+Entity.prototype.toString = function (options) {
 	var
 		raw = '',
 		name, header,
@@ -1556,13 +1556,22 @@ Entity.prototype.toString = function () {
 		contentType = this._headers['Content-Type'],
 		boundary;
 
-	// MIME headers.
-	for (name in this._headers) {
-		if (this._headers.hasOwnProperty(name)) {
-			header = this._headers[name];
+	options = options || {
+		noHeaders: false
+	};
 
-			raw += name + ': ' + header.value + '\r\n';
+	if (!options.noHeaders) {
+		// MIME headers.
+		for (name in this._headers) {
+			if (this._headers.hasOwnProperty(name)) {
+				header = this._headers[name];
+
+				raw += name + ': ' + header.value + '\r\n';
+			}
 		}
+
+		// Separator line.
+		raw += '\r\n';
 	}
 
 	// Body.
@@ -1570,13 +1579,16 @@ Entity.prototype.toString = function () {
 		boundary = contentType.params.boundary;
 
 		for (i = 0, len = this._body.length; i < len; i++) {
-			raw += '\r\n--' + boundary + '\r\n' + this._body[i].toString();
+			if (i > 0) {
+				raw += '\r\n';
+			}
+			raw += '--' + boundary + '\r\n' + this._body[i].toString();
 		}
 		raw += '\r\n--' + boundary + '--';
-	} else if (this._body) {
-		raw += '\r\n' + this._body.toString();
-	} else {
-		raw += '\r\n';
+	} else if (typeof this._body === 'string') {
+		raw += this._body;
+	} else if (typeof this._body === 'object') {
+		raw += JSON.stringify(this._body);
 	}
 
 	return raw;
@@ -1819,11 +1831,13 @@ debugerror.log = console.warn.bind(console);
 function parse(rawMessage) {
 	debug('parse()');
 
-	var entity = new Entity();
+	var entity;
 
 	if (typeof rawMessage !== 'string') {
 		throw new TypeError('given data must be a string');
 	}
+
+	entity = new Entity();
 
 	if (!parseEntity(entity, rawMessage, true)) {
 		debugerror('invalid MIME message');
@@ -1838,7 +1852,7 @@ function parseEntity(entity, rawEntity, topLevel) {
 	debug('parseEntity()');
 
 	var
-		headersEnd,
+		headersEnd = -1,
 		rawHeaders,
 		rawBody,
 		contentType, boundary,
@@ -1847,7 +1861,10 @@ function parseEntity(entity, rawEntity, topLevel) {
 		i, len,
 		subEntity;
 
-	headersEnd = rawEntity.indexOf('\r\n\r\n');
+	// Just look for headers if first line is not empty.
+	if (/^[^\r\n]/.test(rawEntity)) {
+		headersEnd = rawEntity.indexOf('\r\n\r\n');
+	}
 
 	if (headersEnd !== -1) {
 		rawHeaders = rawEntity.slice(0, headersEnd);

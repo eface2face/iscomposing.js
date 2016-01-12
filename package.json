@@ -1,6 +1,6 @@
 {
   "name": "iscomposing",
-  "version": "3.0.1",
+  "version": "3.0.3",
   "description": "JavaScript implementation of \"Indication of Message Composition for Instant Messaging\" (RFC 3994)",
   "author": "Iñaki Baz Castillo at eFace2Face, inc. (https://eface2face.com)",
   "license": "MIT",
@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "debug": "^2.2.0",
-    "mimemessage": "^1.0.0"
+    "mimemessage": "^1.0.4"
   },
   "devDependencies": {
     "browserify": "^11.0.1",
